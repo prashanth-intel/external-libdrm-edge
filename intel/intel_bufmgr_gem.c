@@ -2674,15 +2674,17 @@ drm_intel_gem_bo_flink(drm_intel_bo *bo, uint32_t * name)
 	drm_intel_bufmgr_gem *bufmgr_gem = (drm_intel_bufmgr_gem *) bo->bufmgr;
 	drm_intel_bo_gem *bo_gem = (drm_intel_bo_gem *) bo;
 
+	pthread_mutex_lock(&bufmgr_gem->lock);
 	if (!bo_gem->global_name) {
 		struct drm_gem_flink flink;
 
 		memclear(flink);
 		flink.handle = bo_gem->gem_handle;
-		if (drmIoctl(bufmgr_gem->fd, DRM_IOCTL_GEM_FLINK, &flink))
+		if (drmIoctl(bufmgr_gem->fd, DRM_IOCTL_GEM_FLINK, &flink)) {
+			pthread_mutex_unlock(&bufmgr_gem->lock);
 			return -errno;
+		}
 
-		pthread_mutex_lock(&bufmgr_gem->lock);
 		if (!bo_gem->global_name) {
 			bo_gem->global_name = flink.name;
 			bo_gem->reusable = false;
@@ -2691,10 +2693,10 @@ drm_intel_gem_bo_flink(drm_intel_bo *bo, uint32_t * name)
 				 global_name, sizeof(bo_gem->global_name),
 				 bo_gem);
 		}
-		pthread_mutex_unlock(&bufmgr_gem->lock);
 	}
 
 	*name = bo_gem->global_name;
+	pthread_mutex_unlock(&bufmgr_gem->lock);
 	return 0;
 }
 
@@ -3399,9 +3401,7 @@ drm_public void *drm_intel_gem_bo_map__gtt(drm_intel_bo *bo)
 {
 	drm_intel_bufmgr_gem *bufmgr_gem = (drm_intel_bufmgr_gem *) bo->bufmgr;
 	drm_intel_bo_gem *bo_gem = (drm_intel_bo_gem *) bo;
-
-	if (bo_gem->gtt_virtual)
-		return bo_gem->gtt_virtual;
+	void *gtt_virtual;
 
 	if (bo_gem->is_userptr)
 		return NULL;
@@ -3438,18 +3438,17 @@ drm_public void *drm_intel_gem_bo_map__gtt(drm_intel_bo *bo)
 
 		bo_gem->gtt_virtual = ptr;
 	}
+	gtt_virtual = bo_gem->gtt_virtual;
 	pthread_mutex_unlock(&bufmgr_gem->lock);
 
-	return bo_gem->gtt_virtual;
+	return gtt_virtual;
 }
 
 drm_public void *drm_intel_gem_bo_map__cpu(drm_intel_bo *bo)
 {
 	drm_intel_bufmgr_gem *bufmgr_gem = (drm_intel_bufmgr_gem *) bo->bufmgr;
 	drm_intel_bo_gem *bo_gem = (drm_intel_bo_gem *) bo;
-
-	if (bo_gem->mem_virtual)
-		return bo_gem->mem_virtual;
+	void *mem_virtual;
 
 	if (bo_gem->is_userptr) {
 		/* Return the same user ptr */
@@ -3482,18 +3481,17 @@ drm_public void *drm_intel_gem_bo_map__cpu(drm_intel_bo *bo)
 			bo_gem->mem_virtual = (void *)(uintptr_t) mmap_arg.addr_ptr;
 		}
 	}
+	mem_virtual = bo_gem->mem_virtual;
 	pthread_mutex_unlock(&bufmgr_gem->lock);
 
-	return bo_gem->mem_virtual;
+	return mem_virtual;
 }
 
 drm_public void *drm_intel_gem_bo_map__wc(drm_intel_bo *bo)
 {
 	drm_intel_bufmgr_gem *bufmgr_gem = (drm_intel_bufmgr_gem *) bo->bufmgr;
 	drm_intel_bo_gem *bo_gem = (drm_intel_bo_gem *) bo;
-
-	if (bo_gem->wc_virtual)
-		return bo_gem->wc_virtual;
+	void *wc_virtual;
 
 	if (bo_gem->is_userptr)
 		return NULL;
@@ -3525,9 +3523,10 @@ drm_public void *drm_intel_gem_bo_map__wc(drm_intel_bo *bo)
 			bo_gem->wc_virtual = (void *)(uintptr_t) mmap_arg.addr_ptr;
 		}
 	}
+	wc_virtual = bo_gem->wc_virtual;
 	pthread_mutex_unlock(&bufmgr_gem->lock);
 
-	return bo_gem->wc_virtual;
+	return wc_virtual;
 }
 
 /**
