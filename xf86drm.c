@@ -5171,8 +5171,10 @@ drmGetFormatModifierName(uint64_t modifier)
     unsigned int i;
 
     for (i = 0; i < ARRAY_SIZE(modifier_format_vendor_table); i++) {
-        if (modifier_format_vendor_table[i].vendor == vendorid)
+        if (modifier_format_vendor_table[i].vendor == vendorid) {
             modifier_found = modifier_format_vendor_table[i].vendor_cb(modifier);
+            break;
+        }
     }
 
     if (!modifier_found)

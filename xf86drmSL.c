@@ -157,6 +157,7 @@ drm_public int drmSLInsert(void *l, unsigned long key, void *value)
     SkipListPtr   list  = (SkipListPtr)l;
     SLEntryPtr    entry;
     SLEntryPtr    update[SL_MAX_LEVEL + 1];
+    int           list_level;
     int           level;
     int           i;
 
@@ -168,12 +169,21 @@ drm_public int drmSLInsert(void *l, unsigned long key, void *value)
 
 
     level = SLRandomLevel();
+    list_level = list->level;
     if (level > list->level) {
-	level = ++list->level;
-	update[level] = list->head;
+    for (i = list->level + 1; i <= level; i++) {
+        update[i] = list->head;
+    }
     }
 
     entry = SLCreateEntry(level, key, value);
+    if (!entry) {
+    list->level = list_level;
+    return -1;
+    }
+
+    if (level > list->level)
+    list->level = level;
 
 				/* Fix up forward pointers */
     for (i = 0; i <= level; i++) {
