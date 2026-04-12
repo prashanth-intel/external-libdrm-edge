@@ -108,9 +108,10 @@ drm_public void *drmSLCreate(void)
     list->magic    = SL_LIST_MAGIC;
     list->level    = 0;
     list->head     = SLCreateEntry(SL_MAX_LEVEL, 0, NULL);
-    list->count    = 0;
-
-    for (i = 0; i <= SL_MAX_LEVEL; i++) list->head->forward[i] = NULL;
+	if (!list->head) {
+		drmFree(list);
+		return NULL;
+	}
     
     return list;
 }

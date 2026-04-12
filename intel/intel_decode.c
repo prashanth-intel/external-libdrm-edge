@@ -3964,7 +3964,7 @@ drm_intel_decode(struct drm_intel_decode *ctx)
 				index +=
 				    decode_3d_965(ctx);
 			} else if (IS_GEN3(devid)) {
-				index += decode_3d(ctx);
+				index += (unsigned int)decode_3d(ctx);
 			} else {
 				index +=
 				    decode_3d_i830(ctx);

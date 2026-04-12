@@ -689,7 +689,7 @@ drm_public drmModePropertyPtr drmModeGetProperty(int fd, uint32_t property_id)
 	r->count_values = prop.count_values;
 
 	r->flags = prop.flags;
-	if (prop.count_values)
+	if (prop.count_values && !(prop.flags & DRM_MODE_PROP_BLOB))
 		r->values = drmAllocCpy(U642VOID(prop.values_ptr), prop.count_values, sizeof(uint64_t));
 	if (prop.flags & (DRM_MODE_PROP_ENUM | DRM_MODE_PROP_BITMASK)) {
 		r->count_enums = prop.count_enum_blobs;
