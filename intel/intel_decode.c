@@ -3957,18 +3957,20 @@ drm_intel_decode(struct drm_intel_decode *ctx)
 				index += ret;
 			break;
 		case 0x2:
-			index += decode_2d(ctx);
+			ret = decode_2d(ctx);
+			if (ret > 0)
+				index += (unsigned int)ret;
 			break;
 		case 0x3:
 			if (IS_9XX(devid) && !IS_GEN3(devid)) {
-				index +=
-				    decode_3d_965(ctx);
+				ret = decode_3d_965(ctx);
 			} else if (IS_GEN3(devid)) {
-				index += (unsigned int)decode_3d(ctx);
+				ret = decode_3d(ctx);
 			} else {
-				index +=
-				    decode_3d_i830(ctx);
+				ret = decode_3d_i830(ctx);
 			}
+			if (ret > 0)
+				index += (unsigned int)ret;
 			break;
 		default:
 			instr_out(ctx, index, "UNKNOWN\n");
