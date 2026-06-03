@@ -426,8 +426,21 @@ drm_intel_gem_dump_validation_list(drm_intel_bufmgr_gem *bufmgr_gem)
 
 		for (j = 0; j < bo_gem->reloc_count; j++) {
 			drm_intel_bo *target_bo = bo_gem->reloc_target_info[j].bo;
-			drm_intel_bo_gem *target_gem =
-			    (drm_intel_bo_gem *) target_bo;
+			drm_intel_bo_gem *target_gem;
+
+			if (target_bo == NULL) {
+				DBG("%2d: %d %s(%s)@0x%08x %08x -> null target + 0x%08x\n",
+				    i,
+				    bo_gem->gem_handle,
+				    bo_gem->kflags & EXEC_OBJECT_PINNED ? "*" : "",
+				    bo_gem->name,
+				    upper_32_bits(bo_gem->relocs[j].offset),
+				    lower_32_bits(bo_gem->relocs[j].offset),
+				    bo_gem->relocs[j].delta);
+				continue;
+			}
+
+			target_gem = (drm_intel_bo_gem *) target_bo;
 
 			DBG("%2d: %d %s(%s)@0x%08x %08x -> "
 			    "%d (%s)@0x%08x %08x + 0x%08x\n",
@@ -446,8 +459,18 @@ drm_intel_gem_dump_validation_list(drm_intel_bufmgr_gem *bufmgr_gem)
 
 		for (j = 0; j < bo_gem->softpin_target_count; j++) {
 			drm_intel_bo *target_bo = bo_gem->softpin_target[j];
-			drm_intel_bo_gem *target_gem =
-			    (drm_intel_bo_gem *) target_bo;
+			drm_intel_bo_gem *target_gem;
+
+			if (target_bo == NULL) {
+				DBG("%2d: %d %s(%s) -> null softpin target\n",
+				    i,
+				    bo_gem->gem_handle,
+				    bo_gem->kflags & EXEC_OBJECT_PINNED ? "*" : "",
+				    bo_gem->name);
+				continue;
+			}
+
+			target_gem = (drm_intel_bo_gem *) target_bo;
 			DBG("%2d: %d %s(%s) -> "
 			    "%d *(%s)@0x%08x %08x\n",
 			    i,
@@ -2018,11 +2041,18 @@ do_bo_emit_reloc(drm_intel_bo *bo, uint32_t offset,
 {
 	drm_intel_bufmgr_gem *bufmgr_gem = (drm_intel_bufmgr_gem *) bo->bufmgr;
 	drm_intel_bo_gem *bo_gem = (drm_intel_bo_gem *) bo;
-	drm_intel_bo_gem *target_bo_gem = (drm_intel_bo_gem *) target_bo;
+	drm_intel_bo_gem *target_bo_gem;
 	bool fenced_command;
 
 	if (bo_gem->has_error)
 		return -ENOMEM;
+
+	if (target_bo == NULL) {
+		bo_gem->has_error = true;
+		return -EINVAL;
+	}
+
+	target_bo_gem = (drm_intel_bo_gem *) target_bo;
 
 	if (target_bo_gem->has_error) {
 		bo_gem->has_error = true;
