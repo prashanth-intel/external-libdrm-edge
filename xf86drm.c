@@ -706,12 +706,28 @@ drmIoctl(int fd, unsigned long request, void *arg)
     return ret;
 }
 
+static int fstat_check_return(int fd, stat_t *st, const char *context)
+{
+    int ret;
+
+    do {
+        ret = fstat(fd, st);
+    } while (ret == -1 && errno == EINTR);
+
+    if (ret == 0)
+        return 0;
+
+    drmMsg("%s: fstat failed for fd %d: %s\n",
+           context, fd, strerror(errno));
+    return -1;
+}
+
 static unsigned long drmGetKeyFromFd(int fd)
 {
     stat_t     st;
 
     st.st_rdev = 0;
-    fstat(fd, &st);
+    fstat_check_return(fd, &st, "drmGetKeyFromFd");
     return st.st_rdev;
 }
 
@@ -822,6 +838,70 @@ static int chown_check_return(const char *path, uid_t owner, gid_t group)
                path, errno, strerror(errno));
         return -1;
 }
+
+static int mkdir_check_return(const char *path, mode_t mode)
+{
+        int rv;
+
+        do {
+            rv = mkdir(path, mode);
+        } while (rv != 0 && errno == EINTR);
+
+        if (rv == 0 || errno == EEXIST)
+            return 0;
+
+        drmMsg("Failed to create directory %s! %d: %s\n",
+               path, errno, strerror(errno));
+        return -1;
+}
+
+static int chmod_check_return(const char *path, mode_t mode)
+{
+        int rv;
+
+        do {
+            rv = chmod(path, mode);
+        } while (rv != 0 && errno == EINTR);
+
+        if (rv == 0)
+            return 0;
+
+        drmMsg("Failed to change permissions for file %s! %d: %s\n",
+               path, errno, strerror(errno));
+        return -1;
+}
+
+static int remove_check_return(const char *path)
+{
+        int rv;
+
+        do {
+            rv = remove(path);
+        } while (rv != 0 && errno == EINTR);
+
+        if (rv == 0 || errno == ENOENT)
+            return 0;
+
+        drmMsg("Failed to remove file %s! %d: %s\n",
+               path, errno, strerror(errno));
+        return -1;
+}
+
+static int mknod_check_return(const char *path, mode_t mode, dev_t dev)
+{
+        int rv;
+
+        do {
+            rv = mknod(path, mode, dev);
+        } while (rv != 0 && errno == EINTR);
+
+        if (rv == 0)
+            return 0;
+
+        drmMsg("Failed to create device node %s! %d: %s\n",
+               path, errno, strerror(errno));
+        return -1;
+}
 #endif
 
 static const char *drmGetDeviceName(int type)
@@ -880,23 +960,23 @@ static int drmOpenDevice(dev_t dev, int minor, int type)
     if (stat(DRM_DIR_NAME, &st)) {
         if (!isroot)
             return DRM_ERR_NOT_ROOT;
-        mkdir(DRM_DIR_NAME, DRM_DEV_DIRMODE);
+        mkdir_check_return(DRM_DIR_NAME, DRM_DEV_DIRMODE);
         chown_check_return(DRM_DIR_NAME, 0, 0); /* root:root */
-        chmod(DRM_DIR_NAME, DRM_DEV_DIRMODE);
+        chmod_check_return(DRM_DIR_NAME, DRM_DEV_DIRMODE);
     }
 
     /* Check if the device node exists and create it if necessary. */
     if (stat(buf, &st)) {
         if (!isroot)
             return DRM_ERR_NOT_ROOT;
-        remove(buf);
-        mknod(buf, S_IFCHR | devmode, dev);
+        remove_check_return(buf);
+        mknod_check_return(buf, S_IFCHR | devmode, dev);
     }
 
     if (drm_server_info && drm_server_info->get_perms) {
         group = ((int)serv_group >= 0) ? serv_group : DRM_DEV_GID;
         chown_check_return(buf, user, group);
-        chmod(buf, devmode);
+        chmod_check_return(buf, devmode);
     }
 #else
     /* if we modprobed then wait for udev */
@@ -936,11 +1016,11 @@ wait_for_udev:
     if (st.st_rdev != dev) {
         if (!isroot)
             return DRM_ERR_NOT_ROOT;
-        remove(buf);
-        mknod(buf, S_IFCHR | devmode, dev);
+        remove_check_return(buf);
+        mknod_check_return(buf, S_IFCHR | devmode, dev);
         if (drm_server_info && drm_server_info->get_perms) {
             chown_check_return(buf, user, group);
-            chmod(buf, devmode);
+            chmod_check_return(buf, devmode);
         }
     }
     fd = open(buf, O_RDWR | O_CLOEXEC);
@@ -950,7 +1030,7 @@ wait_for_udev:
         return fd;
 
     drmMsg("drmOpenDevice: Open failed\n");
-    remove(buf);
+    remove_check_return(buf);
 #endif
     return -errno;
 }
@@ -3316,7 +3396,8 @@ drm_public char *drmGetDeviceNameFromFd(int fd)
      * things worse with even more ad hoc directory walking code to
      * discover the device file name. */
 
-    fstat(fd, &sbuf);
+    if (fstat_check_return(fd, &sbuf, "drmGetMinorNameForFD"))
+        return NULL;
     d = sbuf.st_rdev;
 
     for (i = 0; i < DRM_MAX_MINOR; i++) {
