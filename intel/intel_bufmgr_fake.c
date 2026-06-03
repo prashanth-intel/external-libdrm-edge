@@ -542,7 +542,14 @@ evict_lru(drm_intel_bufmgr_fake *bufmgr_fake, unsigned int max_fence)
 	DRMLISTFOREACHSAFE(block, tmp, &bufmgr_fake->lru) {
 		drm_intel_bo_fake *bo_fake = (drm_intel_bo_fake *) block->bo;
 
-		if (bo_fake != NULL && (bo_fake->flags & BM_NO_FENCE_SUBDATA))
+		if (bo_fake == NULL) {
+			DRMLISTDEL(block);
+			mmFreeMem(block->mem);
+			free(block);
+			return 1;
+		}
+
+		if (bo_fake->flags & BM_NO_FENCE_SUBDATA)
 			continue;
 
 		if (block->fence && max_fence && !FENCE_LTE(block->fence,
@@ -569,7 +576,14 @@ evict_mru(drm_intel_bufmgr_fake *bufmgr_fake)
 	DRMLISTFOREACHSAFEREVERSE(block, tmp, &bufmgr_fake->lru) {
 		drm_intel_bo_fake *bo_fake = (drm_intel_bo_fake *) block->bo;
 
-		if (bo_fake && (bo_fake->flags & BM_NO_FENCE_SUBDATA))
+		if (bo_fake == NULL) {
+			DRMLISTDEL(block);
+			mmFreeMem(block->mem);
+			free(block);
+			return 1;
+		}
+
+		if (bo_fake->flags & BM_NO_FENCE_SUBDATA)
 			continue;
 
 		set_dirty(&bo_fake->bo);
@@ -1185,6 +1199,8 @@ static int
 
 	assert(bo_fake->block);
 	assert(bo_fake->block->bo == &bo_fake->bo);
+	if (bo_fake->block == NULL)
+		return -1;
 
 	bo->offset = bo_fake->block->mem->ofs;
 
@@ -1356,8 +1372,11 @@ drm_intel_fake_reloc_and_validate_buffer(drm_intel_bo *bo)
 		if (r->target_buf->offset != r->last_target_offset) {
 			reloc_data = r->target_buf->offset + r->delta;
 
-			if (bo->virtual == NULL)
-				drm_intel_fake_bo_map_locked(bo, 1);
+			if (bo->virtual == NULL) {
+				ret = drm_intel_fake_bo_map_locked(bo, 1);
+				if (ret != 0 || bo->virtual == NULL)
+					return -1;
+			}
 
 			*(uint32_t *) ((uint8_t *) bo->virtual + r->offset) =
 			    reloc_data;
