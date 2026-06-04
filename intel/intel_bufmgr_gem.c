@@ -653,7 +653,8 @@ drm_intel_gem_bo_madvise_internal(drm_intel_bufmgr_gem *bufmgr_gem,
 	madv.handle = bo_gem->gem_handle;
 	madv.madv = state;
 	madv.retained = 1;
-	drmIoctl(bufmgr_gem->fd, DRM_IOCTL_I915_GEM_MADVISE, &madv);
+	if (drmIoctl(bufmgr_gem->fd, DRM_IOCTL_I915_GEM_MADVISE, &madv) != 0)
+		return 0;
 
 	return madv.retained;
 }
