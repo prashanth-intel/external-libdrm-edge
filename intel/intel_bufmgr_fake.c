@@ -1633,6 +1633,8 @@ drm_intel_bufmgr_fake_init(int fd, unsigned long low_offset,
 	drm_intel_bufmgr_fake *bufmgr_fake;
 
 	bufmgr_fake = calloc(1, sizeof(*bufmgr_fake));
+	if (bufmgr_fake == NULL)
+		return NULL;
 
 	{
 		pthread_mutexattr_t lock_attr;
