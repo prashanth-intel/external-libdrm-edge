@@ -629,7 +629,7 @@ static unsigned log2_int(unsigned x)
         return 0;
     }
     for (l = 2; ; l++) {
-        if ((unsigned)(1 << l) > x) {
+        if (l >= sizeof(unsigned) * CHAR_BIT || (1U << l) > x) {
             return l - 1;
         }
     }
