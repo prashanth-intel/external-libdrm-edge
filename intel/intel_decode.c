@@ -137,6 +137,19 @@ instr_out(struct drm_intel_decode *ctx, unsigned int index,
 	va_end(va);
 }
 
+static bool
+add_decode_step(unsigned int *index, int step)
+{
+	if (step < 0)
+		return false;
+
+	if ((uint32_t)step > UINT32_MAX - *index)
+		return false;
+
+	*index += (unsigned int)step;
+	return true;
+}
+
 static int
 decode_MI_SET_CONTEXT(struct drm_intel_decode *ctx)
 {
@@ -3948,21 +3961,33 @@ drm_intel_decode(struct drm_intel_decode *ctx)
 						instr_out(ctx, index, "\n");
 					}
 				}
-			} else
-				index += ret;
+			} else if (!add_decode_step(&index, ret)) {
+				ctx->overflowed = true;
+				index = ctx->count + 1;
+			}
 			break;
 		case 0x2:
-			index += decode_2d(ctx);
+			if (!add_decode_step(&index, decode_2d(ctx))) {
+				ctx->overflowed = true;
+				index = ctx->count + 1;
+			}
 			break;
 		case 0x3:
 			if (IS_9XX(devid) && !IS_GEN3(devid)) {
-				index +=
-				    decode_3d_965(ctx);
+				if (!add_decode_step(&index, decode_3d_965(ctx))) {
+					ctx->overflowed = true;
+					index = ctx->count + 1;
+				}
 			} else if (IS_GEN3(devid)) {
-				index += decode_3d(ctx);
+				if (!add_decode_step(&index, decode_3d(ctx))) {
+					ctx->overflowed = true;
+					index = ctx->count + 1;
+				}
 			} else {
-				index +=
-				    decode_3d_i830(ctx);
+				if (!add_decode_step(&index, decode_3d_i830(ctx))) {
+					ctx->overflowed = true;
+					index = ctx->count + 1;
+				}
 			}
 			break;
 		default:
