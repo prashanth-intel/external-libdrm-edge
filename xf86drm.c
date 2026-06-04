@@ -957,16 +957,17 @@ static int drmOpenDevice(dev_t dev, int minor, int type)
     }
 
 #if !UDEV
-    if (stat(DRM_DIR_NAME, &st)) {
-        if (!isroot)
-            return DRM_ERR_NOT_ROOT;
-        mkdir_check_return(DRM_DIR_NAME, DRM_DEV_DIRMODE);
+    if (mkdir(DRM_DIR_NAME, DRM_DEV_DIRMODE) == 0) {
         chown_check_return(DRM_DIR_NAME, 0, 0); /* root:root */
         chmod_check_return(DRM_DIR_NAME, DRM_DEV_DIRMODE);
+    } else if (errno != EEXIST) {
+        if (!isroot)
+            return DRM_ERR_NOT_ROOT;
+        return -errno;
     }
 
     /* Check if the device node exists and create it if necessary. */
-    if (stat(buf, &st)) {
+    if (mknod(buf, S_IFCHR | devmode, dev) != 0 && errno != EEXIST) {
         if (!isroot)
             return DRM_ERR_NOT_ROOT;
         remove_check_return(buf);
@@ -1013,7 +1014,7 @@ wait_for_udev:
     /* Check if the device node is not what we expect it to be, and recreate it
      * and try again if so.
      */
-    if (st.st_rdev != dev) {
+    if (stat(buf, &st) == 0 && st.st_rdev != dev) {
         if (!isroot)
             return DRM_ERR_NOT_ROOT;
         remove_check_return(buf);
