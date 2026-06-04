@@ -1206,6 +1206,10 @@ static int
 		ret = -1;
 		goto out;
 	}
+	if (bo_fake->block->mem == NULL) {
+		ret = -1;
+		goto out;
+	}
 
 	bo->offset = bo_fake->block->mem->ofs;
 
