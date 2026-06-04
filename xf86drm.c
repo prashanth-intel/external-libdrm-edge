@@ -3596,6 +3596,7 @@ static int get_subsystem_type(const char *device_path)
     char path[PATH_MAX + 1] = "";
     char link[PATH_MAX + 1] = "";
     char *name;
+    ssize_t n;
     struct {
         const char *name;
         int bus_type;
@@ -3608,11 +3609,14 @@ static int get_subsystem_type(const char *device_path)
         { "/virtio", DRM_BUS_VIRTIO },
     };
 
-    strncpy(path, device_path, PATH_MAX);
-    strncat(path, "/subsystem", PATH_MAX);
+    n = snprintf(path, sizeof(path), "%s/subsystem", device_path);
+    if (n < 0 || n >= (ssize_t)sizeof(path))
+        return -ENAMETOOLONG;
 
-    if (readlink(path, link, PATH_MAX) < 0)
+    n = readlink(path, link, PATH_MAX);
+    if (n < 0)
         return -errno;
+    link[n] = '\0';
 
     name = strrchr(link, '/');
     if (!name)
