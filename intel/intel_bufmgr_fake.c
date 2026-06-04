@@ -1201,6 +1201,8 @@ static int
 	assert(bo_fake->block->bo == &bo_fake->bo);
 	if (bo_fake->block == NULL)
 		return -1;
+	if (bo_fake->block->mem == NULL)
+		return -1;
 
 	bo->offset = bo_fake->block->mem->ofs;
 
