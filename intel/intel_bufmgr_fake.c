@@ -1604,6 +1604,8 @@ drm_intel_bufmgr_fake_init(int fd, unsigned long low_offset,
 	drm_intel_bufmgr_fake *bufmgr_fake;
 
 	bufmgr_fake = calloc(1, sizeof(*bufmgr_fake));
+	if (bufmgr_fake == NULL)
+		return NULL;
 
 	if (pthread_mutex_init(&bufmgr_fake->lock, NULL) != 0) {
 		free(bufmgr_fake);
