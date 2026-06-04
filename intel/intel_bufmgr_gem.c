@@ -2703,8 +2703,13 @@ drm_intel_gem_bo_flink(drm_intel_bo *bo, uint32_t * name)
 {
 	drm_intel_bufmgr_gem *bufmgr_gem = (drm_intel_bufmgr_gem *) bo->bufmgr;
 	drm_intel_bo_gem *bo_gem = (drm_intel_bo_gem *) bo;
+	uint32_t global_name;
 
-	if (!bo_gem->global_name) {
+	pthread_mutex_lock(&bufmgr_gem->lock);
+	global_name = bo_gem->global_name;
+	pthread_mutex_unlock(&bufmgr_gem->lock);
+
+	if (!global_name) {
 		struct drm_gem_flink flink;
 
 		memclear(flink);
@@ -2721,10 +2726,11 @@ drm_intel_gem_bo_flink(drm_intel_bo *bo, uint32_t * name)
 				 global_name, sizeof(bo_gem->global_name),
 				 bo_gem);
 		}
+		global_name = bo_gem->global_name;
 		pthread_mutex_unlock(&bufmgr_gem->lock);
 	}
 
-	*name = bo_gem->global_name;
+	*name = global_name;
 	return 0;
 }
 
@@ -3477,9 +3483,7 @@ drm_public void *drm_intel_gem_bo_map__cpu(drm_intel_bo *bo)
 {
 	drm_intel_bufmgr_gem *bufmgr_gem = (drm_intel_bufmgr_gem *) bo->bufmgr;
 	drm_intel_bo_gem *bo_gem = (drm_intel_bo_gem *) bo;
-
-	if (bo_gem->mem_virtual)
-		return bo_gem->mem_virtual;
+	void *mem_virtual;
 
 	if (bo_gem->is_userptr) {
 		/* Return the same user ptr */
@@ -3487,6 +3491,7 @@ drm_public void *drm_intel_gem_bo_map__cpu(drm_intel_bo *bo)
 	}
 
 	pthread_mutex_lock(&bufmgr_gem->lock);
+	mem_virtual = bo_gem->mem_virtual;
 	if (!bo_gem->mem_virtual) {
 		struct drm_i915_gem_mmap mmap_arg;
 
@@ -3511,24 +3516,24 @@ drm_public void *drm_intel_gem_bo_map__cpu(drm_intel_bo *bo)
 			VG(VALGRIND_MALLOCLIKE_BLOCK(mmap_arg.addr_ptr, mmap_arg.size, 0, 1));
 			bo_gem->mem_virtual = (void *)(uintptr_t) mmap_arg.addr_ptr;
 		}
+		mem_virtual = bo_gem->mem_virtual;
 	}
 	pthread_mutex_unlock(&bufmgr_gem->lock);
 
-	return bo_gem->mem_virtual;
+	return mem_virtual;
 }
 
 drm_public void *drm_intel_gem_bo_map__wc(drm_intel_bo *bo)
 {
 	drm_intel_bufmgr_gem *bufmgr_gem = (drm_intel_bufmgr_gem *) bo->bufmgr;
 	drm_intel_bo_gem *bo_gem = (drm_intel_bo_gem *) bo;
-
-	if (bo_gem->wc_virtual)
-		return bo_gem->wc_virtual;
+	void *wc_virtual;
 
 	if (bo_gem->is_userptr)
 		return NULL;
 
 	pthread_mutex_lock(&bufmgr_gem->lock);
+	wc_virtual = bo_gem->wc_virtual;
 	if (!bo_gem->wc_virtual) {
 		struct drm_i915_gem_mmap mmap_arg;
 
@@ -3554,10 +3559,11 @@ drm_public void *drm_intel_gem_bo_map__wc(drm_intel_bo *bo)
 			VG(VALGRIND_MALLOCLIKE_BLOCK(mmap_arg.addr_ptr, mmap_arg.size, 0, 1));
 			bo_gem->wc_virtual = (void *)(uintptr_t) mmap_arg.addr_ptr;
 		}
+		wc_virtual = bo_gem->wc_virtual;
 	}
 	pthread_mutex_unlock(&bufmgr_gem->lock);
 
-	return bo_gem->wc_virtual;
+	return wc_virtual;
 }
 
 /**
