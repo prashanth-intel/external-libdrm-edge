@@ -1171,8 +1171,10 @@ static int
 {
 	drm_intel_bufmgr_fake *bufmgr_fake;
 	drm_intel_bo_fake *bo_fake = (drm_intel_bo_fake *) bo;
+	int ret = 0;
 
 	bufmgr_fake = (drm_intel_bufmgr_fake *) bo->bufmgr;
+	pthread_mutex_lock(&bufmgr_fake->lock);
 
 	DBG("drm_bo_validate: (buf %d: %s, %lu kb)\n", bo_fake->id,
 	    bo_fake->name, bo_fake->bo.size / 1024);
@@ -1186,7 +1188,7 @@ static int
 	if (bo_fake->is_static) {
 		/* Add it to the needs-fence list */
 		bufmgr_fake->need_fence = 1;
-		return 0;
+		goto out;
 	}
 
 	/* Allocate the card memory */
@@ -1194,13 +1196,16 @@ static int
 		bufmgr_fake->fail = 1;
 		DBG("Failed to validate buf %d:%s\n", bo_fake->id,
 		    bo_fake->name);
-		return -1;
+		ret = -1;
+		goto out;
 	}
 
 	assert(bo_fake->block);
 	assert(bo_fake->block->bo == &bo_fake->bo);
-	if (bo_fake->block == NULL)
-		return -1;
+	if (bo_fake->block == NULL) {
+		ret = -1;
+		goto out;
+	}
 
 	bo->offset = bo_fake->block->mem->ofs;
 
@@ -1237,7 +1242,9 @@ static int
 	bo_fake->validated = 1;
 	bufmgr_fake->need_fence = 1;
 
-	return 0;
+	out:
+	pthread_mutex_unlock(&bufmgr_fake->lock);
+	return ret;
 }
 
 static void
@@ -1325,8 +1332,12 @@ drm_intel_fake_emit_reloc(drm_intel_bo *bo, uint32_t offset,
 static void
 drm_intel_fake_calculate_domains(drm_intel_bo *bo)
 {
+	drm_intel_bufmgr_fake *bufmgr_fake =
+	    (drm_intel_bufmgr_fake *) bo->bufmgr;
 	drm_intel_bo_fake *bo_fake = (drm_intel_bo_fake *) bo;
 	int i;
+
+	pthread_mutex_lock(&bufmgr_fake->lock);
 
 	for (i = 0; i < bo_fake->nr_relocs; i++) {
 		struct fake_buffer_reloc *r = &bo_fake->relocs[i];
@@ -1339,6 +1350,8 @@ drm_intel_fake_calculate_domains(drm_intel_bo *bo)
 		target_fake->read_domains |= r->read_domains;
 		target_fake->write_domain |= r->write_domain;
 	}
+
+	pthread_mutex_unlock(&bufmgr_fake->lock);
 }
 
 static int
@@ -1348,8 +1361,11 @@ drm_intel_fake_reloc_and_validate_buffer(drm_intel_bo *bo)
 	    (drm_intel_bufmgr_fake *) bo->bufmgr;
 	drm_intel_bo_fake *bo_fake = (drm_intel_bo_fake *) bo;
 	int i, ret;
+	uint32_t target_offset;
+	int target_validated;
 
 	assert(bo_fake->map_count == 0);
+	pthread_mutex_lock(&bufmgr_fake->lock);
 
 	for (i = 0; i < bo_fake->nr_relocs; i++) {
 		struct fake_buffer_reloc *r = &bo_fake->relocs[i];
@@ -1357,31 +1373,36 @@ drm_intel_fake_reloc_and_validate_buffer(drm_intel_bo *bo)
 		    (drm_intel_bo_fake *) r->target_buf;
 		uint32_t reloc_data;
 
+		target_validated = target_fake->validated;
+		target_offset = r->target_buf->offset;
+
 		/* Validate the target buffer if that hasn't been done. */
-		if (!target_fake->validated) {
+		if (!target_validated) {
 			ret =
 			    drm_intel_fake_reloc_and_validate_buffer(r->target_buf);
 			if (ret != 0) {
 				if (bo->virtual != NULL)
 					drm_intel_fake_bo_unmap_locked(bo);
-				return ret;
+				goto out;
 			}
 		}
 
 		/* Calculate the value of the relocation entry. */
-		if (r->target_buf->offset != r->last_target_offset) {
-			reloc_data = r->target_buf->offset + r->delta;
+		if (target_offset != r->last_target_offset) {
+			reloc_data = target_offset + r->delta;
 
 			if (bo->virtual == NULL) {
 				ret = drm_intel_fake_bo_map_locked(bo, 1);
-				if (ret != 0 || bo->virtual == NULL)
-					return -1;
+				if (ret != 0 || bo->virtual == NULL) {
+					ret = -1;
+					goto out;
+				}
 			}
 
 			*(uint32_t *) ((uint8_t *) bo->virtual + r->offset) =
 			    reloc_data;
 
-			r->last_target_offset = r->target_buf->offset;
+			r->last_target_offset = target_offset;
 		}
 	}
 
@@ -1397,7 +1418,11 @@ drm_intel_fake_reloc_and_validate_buffer(drm_intel_bo *bo)
 		bufmgr_fake->performed_rendering = 1;
 	}
 
-	return drm_intel_fake_bo_validate(bo);
+	ret = drm_intel_fake_bo_validate(bo);
+
+	out:
+	pthread_mutex_unlock(&bufmgr_fake->lock);
+	return ret;
 }
 
 static void
@@ -1407,6 +1432,8 @@ drm_intel_bo_fake_post_submit(drm_intel_bo *bo)
 	    (drm_intel_bufmgr_fake *) bo->bufmgr;
 	drm_intel_bo_fake *bo_fake = (drm_intel_bo_fake *) bo;
 	int i;
+
+	pthread_mutex_lock(&bufmgr_fake->lock);
 
 	for (i = 0; i < bo_fake->nr_relocs; i++) {
 		struct fake_buffer_reloc *r = &bo_fake->relocs[i];
@@ -1426,6 +1453,8 @@ drm_intel_bo_fake_post_submit(drm_intel_bo *bo)
 	bo_fake->validated = 0;
 	bo_fake->read_domains = 0;
 	bo_fake->write_domain = 0;
+
+	pthread_mutex_unlock(&bufmgr_fake->lock);
 }
 
 drm_public void
@@ -1605,9 +1634,26 @@ drm_intel_bufmgr_fake_init(int fd, unsigned long low_offset,
 
 	bufmgr_fake = calloc(1, sizeof(*bufmgr_fake));
 
-	if (pthread_mutex_init(&bufmgr_fake->lock, NULL) != 0) {
-		free(bufmgr_fake);
-		return NULL;
+	{
+		pthread_mutexattr_t lock_attr;
+		int ret;
+
+		if (pthread_mutexattr_init(&lock_attr) != 0) {
+			free(bufmgr_fake);
+			return NULL;
+		}
+		ret = pthread_mutexattr_settype(&lock_attr, PTHREAD_MUTEX_RECURSIVE);
+		if (ret != 0) {
+			pthread_mutexattr_destroy(&lock_attr);
+			free(bufmgr_fake);
+			return NULL;
+		}
+		if (pthread_mutex_init(&bufmgr_fake->lock, &lock_attr) != 0) {
+			pthread_mutexattr_destroy(&lock_attr);
+			free(bufmgr_fake);
+			return NULL;
+		}
+		pthread_mutexattr_destroy(&lock_attr);
 	}
 
 	/* Initialize allocator */
