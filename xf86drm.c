@@ -1013,8 +1013,10 @@ wait_for_udev:
 #if !UDEV
     /* Check if the device node is not what we expect it to be, and recreate it
      * and try again if so.
+     * Use lstat() instead of stat() to avoid following symlinks (TOCTOU).
+     * Only remove and recreate if the path is a character device, not a symlink.
      */
-    if (stat(buf, &st) == 0 && st.st_rdev != dev) {
+    if (lstat(buf, &st) == 0 && S_ISCHR(st.st_mode) && st.st_rdev != dev) {
         if (!isroot)
             return DRM_ERR_NOT_ROOT;
         remove_check_return(buf);
