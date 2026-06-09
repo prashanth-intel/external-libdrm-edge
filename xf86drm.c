@@ -1005,18 +1005,17 @@ wait_for_udev:
 #endif
 
     fd = open(buf, O_RDWR | O_CLOEXEC);
+    int open_errno = (fd < 0) ? errno : 0;
     drmMsg("drmOpenDevice: open result is %d, (%s)\n",
-           fd, fd < 0 ? strerror(errno) : "OK");
+           fd, fd < 0 ? strerror(open_errno) : "OK");
     if (fd >= 0)
         return fd;
 
 #if !UDEV
-    /* Check if the device node is not what we expect it to be, and recreate it
-     * and try again if so.
-     * Use lstat() instead of stat() to avoid following symlinks (TOCTOU).
-     * Only remove and recreate if the path is a character device, not a symlink.
+    /* Avoid path check/use races: recover from open() errors by recreating
+     * the node only for expected stale/missing-device failure codes.
      */
-    if (lstat(buf, &st) == 0 && S_ISCHR(st.st_mode) && st.st_rdev != dev) {
+    if (open_errno == ENOENT || open_errno == ENODEV || open_errno == ENXIO) {
         if (!isroot)
             return DRM_ERR_NOT_ROOT;
         remove_check_return(buf);
