@@ -4355,7 +4355,10 @@ static int drmParseOFDeviceInfo(int maj, int min, char ***compatible)
 
     value = sysfs_uevent_get(path, "OF_COMPATIBLE_N");
     if (value) {
-        sscanf(value, "%u", &count);
+        if (sscanf(value, "%u", &count) != 1) {
+            free(value);
+            return -EINVAL;
+        }
         free(value);
     } else {
         /* Assume one entry if the device lack OF data */
